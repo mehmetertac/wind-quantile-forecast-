@@ -1,0 +1,10 @@
+numpy>=1.26
+pandas>=2.1
+scikit-learn>=1.4
+lightgbm>=4.3
+xgboost>=2.0
+catboost>=1.2
+shap>=0.44
+matplotlib>=3.8
+category_encoders>=2.6
+requests>=2.31
