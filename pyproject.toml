@@ -12,6 +12,7 @@ license = { text = "Apache-2.0" }
 
 [project.scripts]
 wind-forecast = "wind_quantile_forecast.cli:main"
+pull-wind-data = "wind_quantile_forecast.data.dataset:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

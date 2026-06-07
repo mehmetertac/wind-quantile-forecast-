@@ -18,7 +18,32 @@ Given historical wind generation and weather features, predict the next-day hour
 
 ## Data source
 
-[Open Power System Data (OPSD)](https://open-power-system-data.org/) — real EU wind generation time series, freely downloadable as CSV.
+**Target:** German hourly wind power (OPSD onshore + offshore actual generation).
+
+**Features:** Reuses the [energy-feature-pipeline](https://github.com/mehmetertac/energy-feature-pipeline) ERA5 reanalysis + GFS NWP stack (calendar, wind physics, hub-height extrapolation).
+
+| Layer | Source | Role |
+|-------|--------|------|
+| Generation | [OPSD](https://open-power-system-data.org/) time series | `wind_mw` target |
+| Reanalysis | Copernicus ERA5 (CDS) | Hindcast weather + physics features |
+| NWP | GFS via Herbie | Day-ahead forecast covariates at 24 h lead |
+
+Install the sibling feature pipeline, then pull the dataset:
+
+```powershell
+pip install -r requirements-dev.txt
+pip install -r requirements-weather.txt   # editable install of ../energy-feature-pipeline
+pip install -e .
+
+# OPSD wind + ERA5/NWP features → data/processed/day_ahead_wind.parquet
+pull-wind-data --start 2019-06-01 --end 2019-06-15
+
+# Download missing ERA5 months from Copernicus (needs ~/.cdsapirc)
+pull-wind-data --download-era5
+```
+
+The sibling project's cached OPSD parquet is used automatically when present at
+`../energy-feature-pipeline/energy-feature-pipeline/data/raw/`.
 
 ## Tech stack
 
@@ -54,10 +79,13 @@ wind-quantile-forecast/
 
 ```mermaid
 flowchart LR
-    OPSD["OPSD wind data"] --> Download
+    OPSD["OPSD wind\n(onshore+offshore)"] --> Download
+    ERA5["ERA5 reanalysis"] --> Features
+    NWP["GFS NWP"] --> Features
     Download --> Preprocess
-    Preprocess --> Features["Feature engineering"]
-    Features --> Train["Quantile GBM\nLightGBM / XGBoost / CatBoost"]
+    Preprocess --> Features["energy-feature-pipeline\nfeatures"]
+    Features --> DayAhead["Day-ahead table\nlead=24h"]
+    DayAhead --> Train["Quantile GBM\nLightGBM / XGBoost / CatBoost"]
     Train --> Predict["P10 / P50 / P90"]
     Predict --> Eval["Pinball loss +\nReliability diagrams"]
     Train --> SHAP["SHAP explanations"]
@@ -99,10 +127,12 @@ ruff check src tests
 
 ## Deliverables
 
-- [ ] OPSD data ingestion and preprocessing
-- [ ] Feature engineering (calendar, lags, target encoding)
+- [x] OPSD data ingestion and preprocessing
+- [x] ERA5/NWP feature reuse from energy-feature-pipeline (day-ahead lead=24h)
+- [x] Feature engineering (calendar, lags, weather drivers, leakage-safe matrix)
 - [ ] Quantile GBM models (LightGBM, XGBoost, CatBoost)
-- [ ] Pinball loss evaluation
+- [x] Rolling-origin CV harness (`RollingOriginSplit`, `run_rolling_origin_cv`)
+- [ ] Pinball loss evaluation (fold metrics helper ready; full pipeline pending)
 - [ ] Reliability / calibration diagrams
 - [ ] SHAP feature importance plots
 

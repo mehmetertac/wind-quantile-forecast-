@@ -1,0 +1,2 @@
+# Weather / feature layer from sibling project (install after requirements-dev.txt)
+-e ../energy-feature-pipeline/energy-feature-pipeline
