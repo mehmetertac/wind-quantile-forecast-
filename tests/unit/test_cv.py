@@ -98,7 +98,7 @@ def test_run_rolling_origin_cv_harness() -> None:
         y = test_df["wind_mw"].to_numpy()
         return {"mae": float(np.mean(np.abs(y - preds))), "fold_id": float(fold.fold)}
 
-    result = run_rolling_origin_cv(df, evaluate_fold, n_splits=4)
+    result = run_rolling_origin_cv(df, evaluate_fold, n_splits=4, log_folds=False)
     assert isinstance(result, RollingOriginCVResult)
     assert len(result.fold_metrics) == 4
     assert "mae" in result.fold_metrics.columns

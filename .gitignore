@@ -44,6 +44,10 @@ data/processed/*
 reports/figures/*
 !reports/figures/.gitkeep
 
+# CV metrics (generated)
+results/*
+!results/.gitkeep
+
 # Testing / coverage
 .pytest_cache/
 .coverage

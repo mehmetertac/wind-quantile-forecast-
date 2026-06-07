@@ -2,15 +2,24 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Literal
 
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import BaseCrossValidator, TimeSeriesSplit
 
-from wind_quantile_forecast.config import QUANTILES, TARGET_COL
+from wind_quantile_forecast.config import METRICS_CSV, QUANTILES, TARGET_COL
+from wind_quantile_forecast.evaluation.metrics import (
+    evaluate_quantile_forecast,
+    log_fold_metrics,
+    save_metrics_table,
+)
+
+logger = logging.getLogger(__name__)
 
 VALID_TIME_COL = "valid_time"
 SplitMode = Literal["expanding", "rolling"]
@@ -273,6 +282,7 @@ def run_rolling_origin_cv(
     test_size: int | None = None,
     gap: int = 0,
     collect_oof: Callable[[pd.DataFrame, pd.DataFrame, TimeFold], pd.DataFrame] | None = None,
+    log_folds: bool = True,
 ) -> RollingOriginCVResult:
     """Run rolling-origin CV with a user-supplied per-fold evaluator.
 
@@ -291,6 +301,7 @@ def run_rolling_origin_cv(
         test_size: Optional fixed test-window length.
         gap: Periods between train and test windows.
         collect_oof: Optional callback returning out-of-fold prediction rows.
+        log_folds: When True, log per-fold metrics at INFO via :func:`log_fold_metrics`.
 
     Returns:
         :class:`RollingOriginCVResult` with per-fold metrics (and optional OOF preds).
@@ -316,6 +327,8 @@ def run_rolling_origin_cv(
         }
         row.update({k: float(v) for k, v in metrics.items()})
         fold_rows.append(row)
+        if log_folds:
+            log_fold_metrics(fold.fold, metrics, log=logger)
         if collect_oof is not None:
             oof_parts.append(collect_oof(train_df, test_df, fold))
 
@@ -333,24 +346,8 @@ def default_quantile_fold_metrics(
     *,
     quantiles: Sequence[float] = QUANTILES,
 ) -> dict[str, float]:
-    """Pinball loss and prediction-interval coverage for one test fold."""
-    from wind_quantile_forecast.models.pinball import pinball_loss
-
-    yt = np.asarray(y_true, dtype=float)
-    q_lo, q_med, q_hi = quantiles
-    y_med = np.asarray(predictions[q_med], dtype=float)
-    metrics: dict[str, float] = {
-        "mae": float(np.mean(np.abs(yt - y_med))),
-        "n_test": float(len(yt)),
-    }
-    for q in quantiles:
-        yq = np.asarray(predictions[q], dtype=float)
-        metrics[f"pinball_q{int(q * 100):02d}"] = pinball_loss(yt, yq, q)
-    if q_lo in predictions and q_hi in predictions:
-        lo = np.asarray(predictions[q_lo], dtype=float)
-        hi = np.asarray(predictions[q_hi], dtype=float)
-        metrics["pi80_coverage"] = float(np.mean((yt >= lo) & (yt <= hi)))
-    return metrics
+    """Pinball loss, PI coverage, and P50 point errors for one test fold."""
+    return evaluate_quantile_forecast(y_true, predictions, quantiles=quantiles)
 
 
 def evaluate_quantile_origin_cv(
@@ -363,11 +360,15 @@ def evaluate_quantile_origin_cv(
     quantiles: Sequence[float] = QUANTILES,
     splitter: RollingOriginSplit | None = None,
     n_splits: int = 5,
+    metrics_path: Path | str | None = METRICS_CSV,
 ) -> RollingOriginCVResult:
     """Rolling-origin CV for quantile models using a ``predict_fold`` callback.
 
     ``predict_fold(train_df, test_df)`` must fit on train and return a dict of
     quantile -> predictions aligned with ``test_df``.
+
+    When ``metrics_path`` is not ``None``, per-fold metrics are written to CSV
+    (default ``results/metrics.csv``).
     """
     cols = list(feature_cols)
 
@@ -399,11 +400,15 @@ def evaluate_quantile_origin_cv(
         out["fold"] = fold.fold
         return out
 
-    return run_rolling_origin_cv(
+    result = run_rolling_origin_cv(
         df,
         evaluate_fold,
         time_col=time_col,
         splitter=splitter,
         n_splits=n_splits,
         collect_oof=collect_oof,
+        log_folds=True,
     )
+    if metrics_path is not None:
+        save_metrics_table(result.fold_metrics, metrics_path)
+    return result

@@ -115,6 +115,9 @@ pre-commit install
 ## Usage
 
 ```powershell
+# Run LightGBM rolling-origin CV → results/metrics.csv
+py scripts/run_cv.py -v
+
 # Run the full pipeline (not yet implemented)
 wind-forecast --country DE --backend lightgbm
 
@@ -130,9 +133,11 @@ ruff check src tests
 - [x] OPSD data ingestion and preprocessing
 - [x] ERA5/NWP feature reuse from energy-feature-pipeline (day-ahead lead=24h)
 - [x] Feature engineering (calendar, lags, weather drivers, leakage-safe matrix)
-- [ ] Quantile GBM models (LightGBM, XGBoost, CatBoost)
+- [x] LightGBM quantile models (P10/P50/P90 via `objective="quantile"`, rolling-origin CV)
+- [ ] XGBoost / CatBoost quantile backends
 - [x] Rolling-origin CV harness (`RollingOriginSplit`, `run_rolling_origin_cv`)
-- [ ] Pinball loss evaluation (fold metrics helper ready; full pipeline pending)
+- [x] Evaluation metrics (`pinball_loss`, `pi_coverage`, MAE/RMSE/MAPE on P50, per-fold logging)
+- [x] Results table export (`results/metrics.csv` from rolling-origin CV)
 - [ ] Reliability / calibration diagrams
 - [ ] SHAP feature importance plots
 

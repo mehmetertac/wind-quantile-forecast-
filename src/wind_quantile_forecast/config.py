@@ -6,6 +6,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DATA_RAW_DIR = PROJECT_ROOT / "data" / "raw"
 DATA_PROCESSED_DIR = PROJECT_ROOT / "data" / "processed"
 REPORTS_DIR = PROJECT_ROOT / "reports" / "figures"
+RESULTS_DIR = PROJECT_ROOT / "results"
+METRICS_CSV = RESULTS_DIR / "metrics.csv"
 
 QUANTILES = [0.1, 0.5, 0.9]
 QUANTILE_LABELS = {0.1: "P10", 0.5: "P50", 0.9: "P90"}
