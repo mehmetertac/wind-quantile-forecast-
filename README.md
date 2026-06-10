@@ -115,8 +115,18 @@ pre-commit install
 ## Usage
 
 ```powershell
-# Run LightGBM rolling-origin CV → results/metrics.csv
+# Run rolling-origin CV → results/metrics.csv (default: LightGBM)
 py scripts/run_cv.py -v
+
+# XGBoost or CatBoost (multi-quantile by default)
+py scripts/run_cv.py --backend xgboost -v
+py scripts/run_cv.py --backend catboost -v
+
+# CatBoost native categoricals on hour_season (vs target encoding)
+py scripts/run_cv.py --backend catboost --cat-encoding native -v
+
+# Compare all backends → results/backend_comparison.csv
+py scripts/run_comparison.py -v
 
 # Run the full pipeline (not yet implemented)
 wind-forecast --country DE --backend lightgbm
@@ -128,13 +138,30 @@ pytest
 ruff check src tests
 ```
 
+## Backend comparison
+
+Rolling-origin CV with fold-wise target encoding on ``hour_season`` (hour × season, 96 levels).
+CatBoost is also evaluated with native categorical handling (no pre-encoding).
+
+| backend | encoding | pinball_q10 | pinball_q50 | pinball_q90 | pi_coverage | mae | rmse | mape | train_time_sec | n_folds |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| lightgbm | target | 646.7119 | 1610.0332 | 1523.4169 | 0.5782 | 3220.0664 | 4175.6221 | 43.6787 | 2.2207 | 5 |
+| xgboost | target | 973.1068 | 2093.4129 | 1416.5845 | 0.4691 | 4186.8257 | 5291.5195 | 62.5415 | 1.8348 | 5 |
+| catboost | target | 992.5531 | 1570.2403 | 1428.1022 | 0.3992 | 3140.4805 | 4065.2347 | 44.6653 | 7.5555 | 5 |
+| catboost | native | 949.3375 | 1682.3684 | 1519.1717 | 0.3749 | 3364.7369 | 4298.0122 | 46.1643 | 11.2204 | 5 |
+
+Probabilistic metrics are fold means; ``train_time_sec`` is total fit time across folds.
+Regenerate with ``py scripts/run_comparison.py -v`` (writes ``results/backend_comparison.csv``; update this table from the printed markdown).
+
 ## Deliverables
 
 - [x] OPSD data ingestion and preprocessing
 - [x] ERA5/NWP feature reuse from energy-feature-pipeline (day-ahead lead=24h)
 - [x] Feature engineering (calendar, lags, weather drivers, leakage-safe matrix)
 - [x] LightGBM quantile models (P10/P50/P90 via `objective="quantile"`, rolling-origin CV)
-- [ ] XGBoost / CatBoost quantile backends
+- [x] XGBoost / CatBoost quantile backends (`reg:quantileerror` / `MultiQuantile`, same CV harness)
+- [x] Target encoding on `hour_season` (fold-wise LOO; CatBoost native cat baseline)
+- [x] Backend comparison table (`results/backend_comparison.csv`, probabilistic metrics + train time)
 - [x] Rolling-origin CV harness (`RollingOriginSplit`, `run_rolling_origin_cv`)
 - [x] Evaluation metrics (`pinball_loss`, `pi_coverage`, MAE/RMSE/MAPE on P50, per-fold logging)
 - [x] Results table export (`results/metrics.csv` from rolling-origin CV)

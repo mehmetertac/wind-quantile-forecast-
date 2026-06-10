@@ -9,7 +9,14 @@ from wind_quantile_forecast.features.matrix import (
     assemble_feature_matrix,
     validate_no_target_leakage,
 )
-from wind_quantile_forecast.features.target_encoding import add_target_encoding
+from wind_quantile_forecast.features.target_encoding import (
+    CatEncoding,
+    TargetEncoder,
+    add_hour_season_feature,
+    add_target_encoding,
+    encode_fold,
+    target_encoding_column,
+)
 from wind_quantile_forecast.features.weather import (
     add_weather_driver_features,
     weather_driver_columns,
@@ -18,7 +25,12 @@ from wind_quantile_forecast.features.weather import (
 __all__ = [
     "add_calendar_features",
     "add_lag_features",
+    "CatEncoding",
+    "TargetEncoder",
+    "add_hour_season_feature",
     "add_target_encoding",
+    "encode_fold",
+    "target_encoding_column",
     "add_weather_driver_features",
     "assemble_feature_matrix",
     "calendar_feature_columns",

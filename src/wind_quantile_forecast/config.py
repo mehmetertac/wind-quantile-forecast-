@@ -8,6 +8,12 @@ DATA_PROCESSED_DIR = PROJECT_ROOT / "data" / "processed"
 REPORTS_DIR = PROJECT_ROOT / "reports" / "figures"
 RESULTS_DIR = PROJECT_ROOT / "results"
 METRICS_CSV = RESULTS_DIR / "metrics.csv"
+COMPARISON_CSV = RESULTS_DIR / "backend_comparison.csv"
+
+# High-cardinality categorical features (hour × season = 96 levels)
+HOUR_SEASON_COL = "hour_season"
+HIGH_CARDINALITY_CAT_COLS: tuple[str, ...] = (HOUR_SEASON_COL,)
+DEFAULT_TARGET_ENCODING_SMOOTHING = 10.0
 
 QUANTILES = [0.1, 0.5, 0.9]
 QUANTILE_LABELS = {0.1: "P10", 0.5: "P50", 0.9: "P90"}

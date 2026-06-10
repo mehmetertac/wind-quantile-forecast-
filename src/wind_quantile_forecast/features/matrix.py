@@ -6,7 +6,11 @@ from collections.abc import Sequence
 
 import pandas as pd
 
-from wind_quantile_forecast.config import DAY_AHEAD_LEAD_HOURS, TARGET_COL
+from wind_quantile_forecast.config import (
+    DAY_AHEAD_LEAD_HOURS,
+    HIGH_CARDINALITY_CAT_COLS,
+    TARGET_COL,
+)
 from wind_quantile_forecast.features.calendar import calendar_feature_columns
 from wind_quantile_forecast.features.lags import (
     INIT_TIME_COL,
@@ -14,6 +18,7 @@ from wind_quantile_forecast.features.lags import (
     VALID_TIME_COL,
     add_lag_features,
 )
+from wind_quantile_forecast.features.target_encoding import add_hour_season_feature
 from wind_quantile_forecast.features.weather import (
     add_weather_driver_features,
     weather_driver_columns,
@@ -36,11 +41,14 @@ def resolve_feature_columns(
     *,
     target_col: str = TARGET_COL,
     include_lags: bool = True,
+    include_high_cardinality: bool = False,
 ) -> list[str]:
     """Ordered, de-duplicated modeling columns for day-ahead wind quantile GBMs."""
     parts: list[str] = []
     parts.extend(calendar_feature_columns(df))
     parts.extend(weather_driver_columns(df))
+    if include_high_cardinality:
+        parts.extend(c for c in HIGH_CARDINALITY_CAT_COLS if c in df.columns)
     if include_lags:
         parts.extend(lag_feature_columns(df, target_col=target_col))
     seen: set[str] = set()
@@ -164,6 +172,7 @@ def assemble_feature_matrix(
     lags: Sequence[int] | None = None,
     windows: Sequence[int] | None = None,
     include_lags: bool = True,
+    include_high_cardinality: bool = False,
     validate: bool = True,
 ) -> tuple[pd.DataFrame, pd.Series, list[str]]:
     """Build ``(X, y, feature_cols)`` for day-ahead quantile modeling.
@@ -181,6 +190,7 @@ def assemble_feature_matrix(
         lags: Optional lag periods; defaults to ``config.DEFAULT_LAGS``.
         windows: Optional rolling windows; defaults to ``config.DEFAULT_ROLL_WINDOWS``.
         include_lags: When False, skip autoregressive block (calendar + weather only).
+        include_high_cardinality: Add ``hour_season`` (hour × season, 96 levels).
         validate: Run :func:`validate_no_target_leakage` before returning.
 
     Returns:
@@ -196,6 +206,8 @@ def assemble_feature_matrix(
         work = df.copy()
 
     work = add_weather_driver_features(work)
+    if include_high_cardinality:
+        work = add_hour_season_feature(work, datetime_col=VALID_TIME_COL)
     if include_lags:
         work = add_lag_features(
             work,
@@ -205,7 +217,12 @@ def assemble_feature_matrix(
             windows=windows,
         )
 
-    feature_cols = resolve_feature_columns(work, target_col=target_col, include_lags=include_lags)
+    feature_cols = resolve_feature_columns(
+        work,
+        target_col=target_col,
+        include_lags=include_lags,
+        include_high_cardinality=include_high_cardinality,
+    )
     if not feature_cols:
         msg = "no modeling features resolved from dataframe"
         raise ValueError(msg)
