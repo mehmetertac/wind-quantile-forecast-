@@ -50,6 +50,31 @@ def test_quantile_gbm_per_quantile_mode(backend: str) -> None:
     assert len(model._models) == len(QUANTILES)
 
 
+def test_quantile_gbm_estimator_at_returns_fitted_model() -> None:
+    X, y = _synthetic_xy()
+    model = QuantileGBM(backend="lightgbm", model_params=FAST_PARAMS)
+    model.fit(X, y)
+    est = model.estimator_at(0.5)
+    assert est is not None
+    assert hasattr(est, "predict")
+
+
+def test_quantile_gbm_estimator_at_unknown_quantile_raises() -> None:
+    X, y = _synthetic_xy()
+    model = QuantileGBM(backend="lightgbm", model_params=FAST_PARAMS)
+    model.fit(X, y)
+    with pytest.raises(KeyError, match="quantile"):
+        model.estimator_at(0.75)
+
+
+def test_quantile_gbm_estimator_at_multi_quantile_raises() -> None:
+    X, y = _synthetic_xy()
+    model = QuantileGBM(backend="catboost", model_params=FAST_PARAMS, multi_quantile=True)
+    model.fit(X, y)
+    with pytest.raises(ValueError, match="multi_quantile"):
+        model.estimator_at(0.5)
+
+
 def test_quantile_gbm_predict_before_fit_raises() -> None:
     X, _ = _synthetic_xy(n=10)
     model = QuantileGBM(backend="lightgbm")

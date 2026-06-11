@@ -128,6 +128,9 @@ py scripts/run_cv.py --backend catboost --cat-encoding native -v
 # Compare all backends → results/backend_comparison.csv
 py scripts/run_comparison.py -v
 
+# SHAP summary + dependence plots (LightGBM P50/P90) → reports/figures/
+py scripts/run_shap.py -v
+
 # Run the full pipeline (not yet implemented)
 wind-forecast --country DE --backend lightgbm
 
@@ -166,7 +169,9 @@ Regenerate with ``py scripts/run_comparison.py -v`` (writes ``results/backend_co
 - [x] Evaluation metrics (`pinball_loss`, `pi_coverage`, MAE/RMSE/MAPE on P50, per-fold logging)
 - [x] Results table export (`results/metrics.csv` from rolling-origin CV)
 - [ ] Reliability / calibration diagrams
-- [ ] SHAP feature importance plots
+- [x] SHAP feature importance plots (`scripts/run_shap.py` → `reports/figures/`)
+
+See [WEEK_03_REFLECTION.md](WEEK_03_REFLECTION.md) for Week 3 narrative: what was built, open questions (calibration, encoding leakage), and dispatch/market interpretation.
 
 ## License
 

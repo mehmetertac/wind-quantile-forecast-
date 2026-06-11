@@ -151,6 +151,36 @@ class QuantileGBM:
             q: np.asarray(self._models[q].predict(X), dtype=float) for q in self.quantiles
         }
 
+    def estimator_at(self, quantile: float) -> object:
+        """Return the fitted backend estimator for one quantile (for SHAP).
+
+        Args:
+            quantile: Trained quantile level (e.g. ``0.5`` for P50).
+
+        Returns:
+            Backend-specific fitted estimator (e.g. ``LGBMRegressor``).
+
+        Raises:
+            ValueError: Model not fitted or multi-quantile joint model was used.
+            KeyError: ``quantile`` was not among the trained levels.
+        """
+        if self._multi_model is None and not self._models:
+            msg = "QuantileGBM must be fitted before estimator_at"
+            raise ValueError(msg)
+        if quantile not in self.quantiles:
+            msg = f"quantile {quantile} not in trained quantiles {self.quantiles}"
+            raise KeyError(msg)
+        if self._multi_model is not None:
+            msg = (
+                "SHAP requires a single-quantile estimator; refit with "
+                "multi_quantile=False or use backend='lightgbm'"
+            )
+            raise ValueError(msg)
+        if quantile not in self._models:
+            msg = f"no fitted model for quantile {quantile}"
+            raise KeyError(msg)
+        return self._models[quantile]
+
     def _use_multi_quantile(self) -> bool:
         return (
             self.multi_quantile

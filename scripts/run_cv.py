@@ -5,37 +5,15 @@ from __future__ import annotations
 import argparse
 import logging
 
-import pandas as pd
 from wind_quantile_forecast.config import (
-    DAY_AHEAD_LEAD_HOURS,
     DEFAULT_CV_FOLDS,
     HOUR_SEASON_COL,
     METRICS_CSV,
-    TARGET_COL,
-    VALID_TIME_COL,
 )
-from wind_quantile_forecast.data import load_day_ahead_dataset, load_wind_generation
+from wind_quantile_forecast.data import build_modeling_table
 from wind_quantile_forecast.evaluation import evaluate_quantile_origin_cv
-from wind_quantile_forecast.features import assemble_feature_matrix
-from wind_quantile_forecast.features.lags import LEAD_COL
 from wind_quantile_forecast.features.target_encoding import CatEncoding
 from wind_quantile_forecast.models import make_quantile_predict_fold
-
-
-def build_modeling_table() -> tuple[pd.DataFrame, list[str]]:
-    """Load day-ahead data and return a CV-ready frame with feature columns."""
-    day_ahead = load_day_ahead_dataset()
-    gen_history = load_wind_generation()
-    at_lead = day_ahead.loc[day_ahead[LEAD_COL] == DAY_AHEAD_LEAD_HOURS]
-    X, y, feature_cols = assemble_feature_matrix(
-        day_ahead,
-        gen_history,
-        include_high_cardinality=True,
-    )
-    model_df = X.copy()
-    model_df[TARGET_COL] = y
-    model_df[VALID_TIME_COL] = at_lead.loc[X.index, VALID_TIME_COL]
-    return model_df, feature_cols
 
 
 def main(argv: list[str] | None = None) -> int:
