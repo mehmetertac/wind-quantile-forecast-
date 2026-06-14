@@ -48,6 +48,9 @@ reports/figures/*
 results/*
 !results/.gitkeep
 
+# CatBoost training logs
+catboost_info/
+
 # Testing / coverage
 .pytest_cache/
 .coverage

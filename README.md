@@ -1,195 +1,233 @@
-# wind-quantile-forecast
+# Day-ahead probabilistic wind forecast
 
-Day-ahead probabilistic wind power forecast producing **P10 / P50 / P90** quantiles, evaluated with pinball loss and reliability diagrams.
+German national wind power, **24 hours ahead**, as an **uncertainty envelope** — not a single megawatt number.
 
-## Why it matters
+Traders submit day-ahead schedules near **P50** (median). Dispatchers and TSOs size **regulating reserve** from the **P10–P90 band**: wide intervals flag hours where imbalance risk is high even when the median looks fine. This repo trains **quantile gradient boosting** models (LightGBM, XGBoost, CatBoost) with pinball loss, evaluates calibration with reliability diagrams, and explains drivers with SHAP.
 
-Most utility production forecasting still runs on quantile gradient boosting models, not deep learning. This project covers the full production stack: LightGBM, XGBoost, CatBoost, pinball loss, SHAP interpretability, and target encoding for high-cardinality features.
+**Study window:** June 2019, DE aggregate onshore + offshore wind (~358 day-ahead hours). Numbers are illustrative on a short sample; the pipeline is built for multi-year reruns.
 
-## Problem
+| Quantile | Label | Operational meaning |
+|----------|-------|---------------------|
+| 0.10 | **P10** | ~10% chance actual generation falls below this level |
+| 0.50 | **P50** | Median — primary schedule / bid anchor |
+| 0.90 | **P90** | ~90% chance actual generation falls below this level |
 
-Given historical wind generation and weather features, predict the next-day hourly wind power distribution as three quantiles:
+---
 
-| Quantile | Label | Meaning |
-|----------|-------|---------|
-| 0.10 | P10 | 10 % chance actual generation falls below this value |
-| 0.50 | P50 | Median (point) forecast |
-| 0.90 | P90 | 90 % chance actual generation falls below this value |
+## Why quantile GBMs beat a point forecast alone
 
-## Data source
+A single MAE-optimal forecast tells you **expected** output. It does not tell you **how wrong** you could be hour by hour.
 
-**Target:** German hourly wind power (OPSD onshore + offshore actual generation).
+| Question | Point GBM / MAE model | Quantile GBM (this repo) |
+|----------|----------------------|---------------------------|
+| Day-ahead bid volume | One number per hour | **P50** per hour |
+| Reserve / flex sizing | Heuristic buffers on MAE | **P90 − P10** width + calibrated coverage |
+| Tail / ramp risk | Hidden in aggregate error | **P90** SHAP shows upside drivers |
+| Settlement exposure | Under-procure if errors are skewed | Explicit **P10/P90** labels for risk teams |
 
-**Features:** Reuses the [energy-feature-pipeline](https://github.com/mehmetertac/energy-feature-pipeline) ERA5 reanalysis + GFS NWP stack (calendar, wind physics, hub-height extrapolation).
+Gradient boosting with pinball loss is the workhorse in utility production forecasting: fast on tabular weather features, native quantile objectives, and interpretable with SHAP. Deep models help at scale; for national day-ahead wind with ERA5/NWP covariates, **quantile GBMs remain the baseline to beat**.
 
-| Layer | Source | Role |
-|-------|--------|------|
-| Generation | [OPSD](https://open-power-system-data.org/) time series | `wind_mw` target |
-| Reanalysis | Copernicus ERA5 (CDS) | Hindcast weather + physics features |
-| NWP | GFS via Herbie | Day-ahead forecast covariates at 24 h lead |
+**Dispatch intuition:** if P90 − P10 is 4 GW for an hour, a conservative desk might hold ~2 GW of upward/downward flex around P50 (rules vary by TSO). **Under-calibrated** bands shrink that buffer on paper while real weather error stays the same — a direct path to balancing activation and imbalance charges.
 
-Install the sibling feature pipeline, then pull the dataset:
+---
 
-```powershell
-pip install -r requirements-dev.txt
-pip install -r requirements-weather.txt   # editable install of ../energy-feature-pipeline
-pip install -e .
+## What SHAP revealed
 
-# OPSD wind + ERA5/NWP features → data/processed/day_ahead_wind.parquet
-pull-wind-data --start 2019-06-01 --end 2019-06-15
+SHAP on the tuned LightGBM (exploratory in-sample encoding; see caveats below):
 
-# Download missing ERA5 months from Copernicus (needs ~/.cdsapirc)
-pull-wind-data --download-era5
+![SHAP beeswarm — P50 median forecast](docs/images/shap_summary_p50.png)
+
+**P50 (median schedule):** NWP **hub wind speed** and **wind direction** (cos component) set most of the level. **Recent generation** (`wind_mw_lag_1`, `roll24_min`) acts as a residual corrector — high recent output often pulls the median down once weather is fixed. **Diurnal** encodings (`cos_hour`) add a modest time-of-day nudge.
+
+![SHAP beeswarm — P90 upper tail](docs/images/shap_summary_p90.png)
+
+**P90 (upside tail):** same NWP-first structure, plus **tail-specific** drivers — **`wind_mw_roll24_std`** (high recent volatility widens the upper band) and **`wind_mw_lag_48`** (two-day persistence supports upside). Holiday proximity features rank higher at P90 than P50; treat as weak calendar proxies on this short sample.
+
+Full feature-by-feature notes: [reports/SHAP_INTERPRETATION.md](reports/SHAP_INTERPRETATION.md).
+
+---
+
+## Calibration
+
+After Optuna tuning on rolling-origin CV pinball loss, out-of-fold **P10–P90 coverage** is **81%** (nominal 80%) on the June 2019 holdout folds — slightly **too wide** vs default hyperparameters (~59% coverage, intervals too narrow).
+
+![Reliability diagram — quantile calibration and P10–P90 interval coverage](docs/images/reliability_diagram.png)
+
+Points **below** the diagonal mean under-coverage at that quantile; the interval panel compares empirical vs 80% nominal PI coverage. Regenerate: `py scripts/run_finalize.py -v` (or `--skip-tune` with locked params).
+
+---
+
+## Results
+
+### Backend comparison (default hyperparameters, fold-wise target encoding)
+
+Rolling-origin CV, 5 folds, `hour_season` target-encoded per fold. Only folds 4–5 have test rows on this short window.
+
+| backend | encoding | pinball_q10 | pinball_q50 | pinball_q90 | pi_coverage | mae (P50) | rmse | mape | train_time_sec |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| **lightgbm** | target | 647.8 | 1620.5 | 1466.2 | **0.586** | 3241.1 | 4213.6 | 43.7 | 2.5 |
+| xgboost | target | 973.3 | 2044.8 | 1342.6 | 0.502 | 4089.7 | 5269.6 | 61.4 | 1.8 |
+| catboost | target | 991.5 | 1567.0 | 1421.0 | 0.399 | 3134.1 | 4063.2 | 44.6 | 4.1 |
+| catboost | native | 949.3 | 1682.4 | 1519.2 | 0.375 | 3364.7 | 4298.0 | 46.2 | 10.9 |
+
+**LightGBM + target encoding** wins on pinball_q50 and pi_coverage among defaults. Regenerate: `py scripts/run_comparison.py -v` → `results/backend_comparison.csv`.
+
+### Tuned LightGBM (Optuna, locked in `results/final_model_params.json`)
+
+| metric | value |
+|--------|-------|
+| mean pinball (q10+q50+q90) | **986.0** MW |
+| pinball_q50 | 1607.9 |
+| pi_coverage (P10–P90) | **0.814** |
+| MAE on P50 | 3215.8 MW |
+| RMSE on P50 | 3998.3 MW |
+
+---
+
+## Architecture
+
+```mermaid
+flowchart LR
+    subgraph sources["Data sources"]
+        OPSD["OPSD wind\nonshore + offshore"]
+        ERA5["ERA5 reanalysis"]
+        NWP["GFS NWP\nlead 24h"]
+    end
+
+    subgraph ingest["Ingestion"]
+        Download["pull-wind-data"]
+        Preprocess["Calendar + lags\nleakage-safe join"]
+    end
+
+    subgraph features["Features"]
+        EFP["energy-feature-pipeline\nwind physics + hub height"]
+        TE["Target encoding\nhour × season"]
+    end
+
+    subgraph model["Quantile GBM"]
+        LGBM["LightGBM"]
+        XGB["XGBoost"]
+        CB["CatBoost"]
+    end
+
+    subgraph outputs["Outputs"]
+        Q["P10 / P50 / P90"]
+        Eval["Pinball + coverage\nreliability diagram"]
+        SHAP["SHAP beeswarm"]
+    end
+
+    OPSD --> Download
+    ERA5 --> EFP
+    NWP --> EFP
+    Download --> Preprocess
+    Preprocess --> EFP
+    EFP --> TE
+    TE --> LGBM
+    TE --> XGB
+    TE --> CB
+    LGBM --> Q
+    XGB --> Q
+    CB --> Q
+    Q --> Eval
+    LGBM --> SHAP
 ```
 
-The sibling project's cached OPSD parquet is used automatically when present at
-`../energy-feature-pipeline/energy-feature-pipeline/data/raw/`.
+**Leakage control:** autoregressive lags are joined at `init_time` (NWP issue time), not `valid_time`. ERA5 hindcast columns are excluded from the day-ahead feature matrix.
 
-## Tech stack
+---
 
-- **Models:** LightGBM, XGBoost, CatBoost (quantile regression via pinball loss)
-- **Interpretability:** SHAP
-- **Encoding:** Target encoding for high-cardinality categorical features
-- **Evaluation:** Pinball loss, coverage metrics, reliability (calibration) diagrams
+## Reproduce end-to-end
+
+```powershell
+git clone https://github.com/mehmetertac/wind-quantile-forecast.git
+cd wind-quantile-forecast
+
+py -m venv .venv
+.venv\Scripts\Activate.ps1
+
+pip install -r requirements-dev.txt
+pip install -r requirements-weather.txt   # editable ../energy-feature-pipeline
+pip install -e .
+pre-commit install
+
+# 1. Build day-ahead table (OPSD + ERA5/NWP features, lead=24h)
+pull-wind-data --start 2019-06-01 --end 2019-06-15
+# Optional: pull-wind-data --download-era5  (needs ~/.cdsapirc)
+
+# 2. Compare GBM backends (default hyperparameters)
+py scripts/run_comparison.py -v
+
+# 3. Tune LightGBM, final CV, calibration plot, locked params
+py scripts/run_finalize.py -v --n-trials 40
+
+# 4. SHAP summary plots (or: py scripts/run_finalize.py -v --skip-tune --shap)
+py scripts/run_shap.py -v
+
+# 5. Tests
+pytest -q
+ruff check src tests
+```
+
+**Generated artifacts** (gitignored locally; figures above are copied to `docs/images/` for the README):
+
+| Path | Contents |
+|------|----------|
+| `results/metrics.csv` | Per-fold CV metrics |
+| `results/backend_comparison.csv` | Backend sweep |
+| `results/final_model_params.json` | Tuned hyperparameters + CV summary |
+| `results/figures/reliability_diagram.png` | Calibration / reliability |
+| `results/figures/shap_summary_p*.png` | SHAP beeswarms |
+| `reports/figures/` | Alternate SHAP output from `run_shap.py` |
+
+Extend the window (`pull-wind-data --start 2018-01-01 --end 2020-12-31`) before trusting calibration or SHAP calendar effects.
+
+---
 
 ## Repository layout
 
 ```
 wind-quantile-forecast/
 ├── src/wind_quantile_forecast/
-│   ├── config.py              # paths, quantiles, seeds
-│   ├── data/                  # OPSD download + preprocessing
-│   ├── features/              # calendar, lags, target encoding
-│   ├── models/                # pinball loss + QuantileGBM wrapper
-│   ├── evaluation/            # metrics, reliability, plots
-│   ├── interpret/             # SHAP explanations
-│   └── cli.py                 # pipeline entry point
-├── tests/
-│   ├── unit/                  # unit tests (pinball loss, etc.)
-│   └── integration/           # end-to-end pipeline tests
-├── data/{raw,processed}/      # data directories (contents gitignored)
-├── reports/figures/           # SHAP output
-├── results/figures/           # calibration / reliability plots (generated)
-├── notebooks/                 # exploratory analysis
-├── scripts/                   # pre-commit helpers
-├── AGENTS.md                  # contributor / agent governance rules
-└── requirements.txt
+│   ├── data/           # OPSD + day-ahead dataset build
+│   ├── features/       # calendar, lags, target encoding
+│   ├── models/         # pinball loss, QuantileGBM
+│   ├── evaluation/     # CV, metrics, reliability, tuning
+│   └── interpret/      # SHAP
+├── scripts/            # run_cv, run_comparison, run_finalize, run_shap, run_tune
+├── tests/unit/
+├── docs/images/        # README figures (committed)
+├── reports/            # SHAP_INTERPRETATION.md
+├── data/{raw,processed}/  # gitignored contents
+└── results/            # metrics + figures (gitignored)
 ```
 
-## Pipeline
+---
 
-```mermaid
-flowchart LR
-    OPSD["OPSD wind\n(onshore+offshore)"] --> Download
-    ERA5["ERA5 reanalysis"] --> Features
-    NWP["GFS NWP"] --> Features
-    Download --> Preprocess
-    Preprocess --> Features["energy-feature-pipeline\nfeatures"]
-    Features --> DayAhead["Day-ahead table\nlead=24h"]
-    DayAhead --> Train["Quantile GBM\nLightGBM / XGBoost / CatBoost"]
-    Train --> Predict["P10 / P50 / P90"]
-    Predict --> Eval["Pinball loss +\nReliability diagrams"]
-    Train --> SHAP["SHAP explanations"]
-    Eval --> Results["results/\nmetrics + calibration"]
-    SHAP --> Reports["reports/figures/"]
-```
+## Data
 
-## Setup
+| Layer | Source | Role |
+|-------|--------|------|
+| Generation | [OPSD](https://open-power-system-data.org/) | `wind_mw` target (DE onshore + offshore) |
+| Reanalysis | Copernicus ERA5 | Hindcast weather + physics features |
+| NWP | GFS via Herbie | Day-ahead covariates at 24 h lead |
 
-```powershell
-# Clone and enter the repo
-git clone https://github.com/mehmetertac/wind-quantile-forecast-.git
-cd wind-quantile-forecast-
+Features are built through the sibling [energy-feature-pipeline](https://github.com/mehmetertac/energy-feature-pipeline) (calendar, wind physics, hub-height extrapolation).
 
-# Create virtual environment
-py -m venv .venv
-.venv\Scripts\Activate.ps1
+---
 
-# Install dependencies
-pip install -r requirements-dev.txt
-pip install -e .
+## Caveats
 
-# Install pre-commit hooks (runs tests + file-size check before commit)
-pre-commit install
-```
+- **Sample:** two weeks of June 2019 — calm spells inflate MAPE; frontal ramps underrepresented.
+- **SHAP encoding:** `run_shap.py` uses in-sample LOO target encoding for driver analysis, not fold-safe production encoding.
+- **Quantile crossing:** independent pinball fits per quantile; `enforce_monotonic` sorts P10 ≤ P50 ≤ P90 at predict time (default in finalize/CV).
+- **CLI:** `wind-forecast` entry point is not yet wired end-to-end.
 
-## Usage
+Further narrative: [WEEK_03_REFLECTION.md](WEEK_03_REFLECTION.md).
 
-```powershell
-# Run rolling-origin CV → results/metrics.csv (default: LightGBM)
-py scripts/run_cv.py -v
-
-# XGBoost or CatBoost (multi-quantile by default)
-py scripts/run_cv.py --backend xgboost -v
-py scripts/run_cv.py --backend catboost -v
-
-# CatBoost native categoricals on hour_season (vs target encoding)
-py scripts/run_cv.py --backend catboost --cat-encoding native -v
-
-# Compare all backends → results/backend_comparison.csv
-py scripts/run_comparison.py -v
-
-# SHAP summary + dependence plots (LightGBM P50/P90) → reports/figures/
-py scripts/run_shap.py -v
-
-# Tune LightGBM on rolling-origin CV pinball loss (Optuna) → results/tuning_trials.csv
-py scripts/run_tune.py -v --n-trials 40
-
-# Full finalize: tune + CV + reliability diagram → results/
-py scripts/run_finalize.py -v
-
-# Re-run CV with locked params (skip tuning)
-py scripts/run_finalize.py -v --skip-tune
-
-# CV using saved hyperparameters
-py scripts/run_cv.py -v --params-json results/final_model_params.json
-
-# Run the full pipeline (not yet implemented)
-wind-forecast --country DE --backend lightgbm
-
-# Run tests
-pytest
-
-# Run linting
-ruff check src tests
-```
-
-## Backend comparison
-
-Rolling-origin CV with fold-wise target encoding on ``hour_season`` (hour × season, 96 levels).
-CatBoost is also evaluated with native categorical handling (no pre-encoding).
-
-| backend | encoding | pinball_q10 | pinball_q50 | pinball_q90 | pi_coverage | mae | rmse | mape | train_time_sec | n_folds |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| lightgbm | target | 646.7119 | 1610.0332 | 1523.4169 | 0.5782 | 3220.0664 | 4175.6221 | 43.6787 | 2.2207 | 5 |
-| xgboost | target | 973.1068 | 2093.4129 | 1416.5845 | 0.4691 | 4186.8257 | 5291.5195 | 62.5415 | 1.8348 | 5 |
-| catboost | target | 992.5531 | 1570.2403 | 1428.1022 | 0.3992 | 3140.4805 | 4065.2347 | 44.6653 | 7.5555 | 5 |
-| catboost | native | 949.3375 | 1682.3684 | 1519.1717 | 0.3749 | 3364.7369 | 4298.0122 | 46.1643 | 11.2204 | 5 |
-
-Probabilistic metrics are fold means; ``train_time_sec`` is total fit time across folds.
-Regenerate with ``py scripts/run_comparison.py -v`` (writes ``results/backend_comparison.csv``; update this table from the printed markdown).
-
-**Calibration note:** LightGBM P10–P90 intervals currently cover ~58 % of observations (nominal 80 %) — intervals are **too narrow**. After ``run_finalize.py``, read ``results/figures/reliability_diagram.png``: points **below** the diagonal indicate under-coverage at that quantile; the interval panel compares empirical vs 80 % nominal PI coverage.
-
-## Deliverables
-
-- [x] OPSD data ingestion and preprocessing
-- [x] ERA5/NWP feature reuse from energy-feature-pipeline (day-ahead lead=24h)
-- [x] Feature engineering (calendar, lags, weather drivers, leakage-safe matrix)
-- [x] LightGBM quantile models (P10/P50/P90 via `objective="quantile"`, rolling-origin CV)
-- [x] XGBoost / CatBoost quantile backends (`reg:quantileerror` / `MultiQuantile`, same CV harness)
-- [x] Target encoding on `hour_season` (fold-wise LOO; CatBoost native cat baseline)
-- [x] Backend comparison table (`results/backend_comparison.csv`, probabilistic metrics + train time)
-- [x] Rolling-origin CV harness (`RollingOriginSplit`, `run_rolling_origin_cv`)
-- [x] Evaluation metrics (`pinball_loss`, `pi_coverage`, MAE/RMSE/MAPE on P50, per-fold logging)
-- [x] Results table export (`results/metrics.csv` from rolling-origin CV)
-- [x] Reliability / calibration diagrams (`scripts/run_finalize.py` → `results/figures/reliability_diagram.png`)
-- [x] Hyperparameter tuning (`scripts/run_tune.py`, Optuna on mean pinball loss)
-- [x] Quantile crossing fix (row-wise monotonic sort in `QuantileGBM.predict`)
-- [x] SHAP feature importance plots (`scripts/run_shap.py` → `reports/figures/`)
-
-See [WEEK_03_REFLECTION.md](WEEK_03_REFLECTION.md) for Week 3 narrative: what was built, open questions (calibration, encoding leakage), and dispatch/market interpretation.
+---
 
 ## License
 
 Apache-2.0 — see [LICENSE](LICENSE).
+
+**Release:** v0.1.0 — initial public quantile GBM stack, calibration plots, and SHAP interpretability.
