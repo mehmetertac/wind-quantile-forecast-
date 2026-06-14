@@ -75,6 +75,37 @@ def pi_coverage(
     return float(np.mean((yt >= lo) & (yt <= hi)))
 
 
+def diagnose_interval_width(
+    y_true: np.ndarray | pd.Series,
+    p_lo: np.ndarray | pd.Series,
+    p_hi: np.ndarray | pd.Series,
+    *,
+    nominal: float = PI_COVERAGE_TARGET,
+) -> dict[str, float]:
+    """Diagnose prediction-interval calibration and width.
+
+    Args:
+        y_true: Observed values.
+        p_lo: Lower interval bound (P10).
+        p_hi: Upper interval bound (P90).
+        nominal: Nominal PI coverage (default 80%).
+
+    Returns:
+        Dict with ``pi_coverage``, ``nominal_coverage``, ``coverage_gap``,
+        and ``mean_interval_width``.
+    """
+    yt = np.asarray(y_true, dtype=float)
+    lo = np.asarray(p_lo, dtype=float)
+    hi = np.asarray(p_hi, dtype=float)
+    observed = pi_coverage(yt, lo, hi)
+    return {
+        "pi_coverage": observed,
+        "nominal_coverage": float(nominal),
+        "coverage_gap": observed - float(nominal),
+        "mean_interval_width": float(np.mean(hi - lo)),
+    }
+
+
 def mae(y_true: np.ndarray | pd.Series, y_pred: np.ndarray | pd.Series) -> float:
     """Mean absolute error."""
     yt = np.asarray(y_true, dtype=float)

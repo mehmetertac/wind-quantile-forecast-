@@ -21,6 +21,7 @@ from wind_quantile_forecast.evaluation.cv import (
 from wind_quantile_forecast.evaluation.metrics import (
     METRICS_TABLE_COLUMNS,
     PI_COVERAGE_TARGET,
+    diagnose_interval_width,
     evaluate_quantile_forecast,
     format_metrics_table,
     log_fold_metrics,
@@ -32,7 +33,22 @@ from wind_quantile_forecast.evaluation.metrics import (
     save_metrics_table,
 )
 from wind_quantile_forecast.evaluation.plots import plot_reliability_diagram
-from wind_quantile_forecast.evaluation.reliability import compute_reliability_curve
+from wind_quantile_forecast.evaluation.reliability import (
+    build_calibration_table,
+    compute_reliability_curve,
+    marginal_quantile_coverage,
+    quantile_calibration_gap,
+    reliability_from_oof,
+)
+from wind_quantile_forecast.evaluation.tuning import (
+    TuningResult,
+    default_final_config,
+    load_final_model_params,
+    mean_pinball_cv_score,
+    save_final_model_params,
+    save_tuning_trials,
+    tune_lightgbm_quantile_cv,
+)
 
 __all__ = [
     "COMPARISON_TABLE_COLUMNS",
@@ -44,8 +60,10 @@ __all__ = [
     "RollingOriginSplit",
     "TimeFold",
     "comparison_table_markdown",
+    "build_calibration_table",
     "compute_reliability_curve",
     "default_quantile_fold_metrics",
+    "diagnose_interval_width",
     "evaluate_quantile_forecast",
     "evaluate_quantile_origin_cv",
     "format_comparison_table",
@@ -53,13 +71,23 @@ __all__ = [
     "log_fold_metrics",
     "mae",
     "mape",
+    "marginal_quantile_coverage",
     "pinball_loss",
     "pi_coverage",
     "plot_reliability_diagram",
+    "quantile_calibration_gap",
+    "reliability_from_oof",
     "run_backend_comparison",
     "save_comparison_table",
+    "save_final_model_params",
+    "save_tuning_trials",
     "rmse",
     "save_metrics_table",
     "rolling_origin_time_folds",
     "run_rolling_origin_cv",
+    "tune_lightgbm_quantile_cv",
+    "TuningResult",
+    "mean_pinball_cv_score",
+    "load_final_model_params",
+    "default_final_config",
 ]

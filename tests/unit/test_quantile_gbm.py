@@ -35,6 +35,15 @@ def test_quantile_gbm_fit_predict_returns_all_quantiles(backend: str) -> None:
         assert np.isfinite(preds[q]).all()
 
 
+def test_quantile_gbm_predict_enforces_monotonic_order() -> None:
+    X, y = _synthetic_xy(n=200)
+    model = QuantileGBM(backend="lightgbm", model_params=FAST_PARAMS)
+    model.fit(X, y)
+    preds = model.predict(X, enforce_monotonic=True)
+    stacked = np.column_stack([preds[q] for q in sorted(QUANTILES)])
+    assert np.all(np.diff(stacked, axis=1) >= 0)
+
+
 @pytest.mark.parametrize("backend", ["xgboost", "catboost"])
 def test_quantile_gbm_per_quantile_mode(backend: str) -> None:
     X, y = _synthetic_xy()

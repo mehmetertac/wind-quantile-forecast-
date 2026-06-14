@@ -68,7 +68,8 @@ wind-quantile-forecast/
 │   ├── unit/                  # unit tests (pinball loss, etc.)
 │   └── integration/           # end-to-end pipeline tests
 ├── data/{raw,processed}/      # data directories (contents gitignored)
-├── reports/figures/           # calibration plots + SHAP output
+├── reports/figures/           # SHAP output
+├── results/figures/           # calibration / reliability plots (generated)
 ├── notebooks/                 # exploratory analysis
 ├── scripts/                   # pre-commit helpers
 ├── AGENTS.md                  # contributor / agent governance rules
@@ -89,8 +90,8 @@ flowchart LR
     Train --> Predict["P10 / P50 / P90"]
     Predict --> Eval["Pinball loss +\nReliability diagrams"]
     Train --> SHAP["SHAP explanations"]
-    Eval --> Reports["reports/figures/"]
-    SHAP --> Reports
+    Eval --> Results["results/\nmetrics + calibration"]
+    SHAP --> Reports["reports/figures/"]
 ```
 
 ## Setup
@@ -131,6 +132,18 @@ py scripts/run_comparison.py -v
 # SHAP summary + dependence plots (LightGBM P50/P90) → reports/figures/
 py scripts/run_shap.py -v
 
+# Tune LightGBM on rolling-origin CV pinball loss (Optuna) → results/tuning_trials.csv
+py scripts/run_tune.py -v --n-trials 40
+
+# Full finalize: tune + CV + reliability diagram → results/
+py scripts/run_finalize.py -v
+
+# Re-run CV with locked params (skip tuning)
+py scripts/run_finalize.py -v --skip-tune
+
+# CV using saved hyperparameters
+py scripts/run_cv.py -v --params-json results/final_model_params.json
+
 # Run the full pipeline (not yet implemented)
 wind-forecast --country DE --backend lightgbm
 
@@ -156,6 +169,8 @@ CatBoost is also evaluated with native categorical handling (no pre-encoding).
 Probabilistic metrics are fold means; ``train_time_sec`` is total fit time across folds.
 Regenerate with ``py scripts/run_comparison.py -v`` (writes ``results/backend_comparison.csv``; update this table from the printed markdown).
 
+**Calibration note:** LightGBM P10–P90 intervals currently cover ~58 % of observations (nominal 80 %) — intervals are **too narrow**. After ``run_finalize.py``, read ``results/figures/reliability_diagram.png``: points **below** the diagonal indicate under-coverage at that quantile; the interval panel compares empirical vs 80 % nominal PI coverage.
+
 ## Deliverables
 
 - [x] OPSD data ingestion and preprocessing
@@ -168,7 +183,9 @@ Regenerate with ``py scripts/run_comparison.py -v`` (writes ``results/backend_co
 - [x] Rolling-origin CV harness (`RollingOriginSplit`, `run_rolling_origin_cv`)
 - [x] Evaluation metrics (`pinball_loss`, `pi_coverage`, MAE/RMSE/MAPE on P50, per-fold logging)
 - [x] Results table export (`results/metrics.csv` from rolling-origin CV)
-- [ ] Reliability / calibration diagrams
+- [x] Reliability / calibration diagrams (`scripts/run_finalize.py` → `results/figures/reliability_diagram.png`)
+- [x] Hyperparameter tuning (`scripts/run_tune.py`, Optuna on mean pinball loss)
+- [x] Quantile crossing fix (row-wise monotonic sort in `QuantileGBM.predict`)
 - [x] SHAP feature importance plots (`scripts/run_shap.py` → `reports/figures/`)
 
 See [WEEK_03_REFLECTION.md](WEEK_03_REFLECTION.md) for Week 3 narrative: what was built, open questions (calibration, encoding leakage), and dispatch/market interpretation.

@@ -9,6 +9,11 @@ REPORTS_DIR = PROJECT_ROOT / "reports" / "figures"
 RESULTS_DIR = PROJECT_ROOT / "results"
 METRICS_CSV = RESULTS_DIR / "metrics.csv"
 COMPARISON_CSV = RESULTS_DIR / "backend_comparison.csv"
+RESULTS_FIGURES_DIR = RESULTS_DIR / "figures"
+RELIABILITY_PNG = RESULTS_FIGURES_DIR / "reliability_diagram.png"
+CALIBRATION_CSV = RESULTS_DIR / "calibration_coverage.csv"
+FINAL_PARAMS_JSON = RESULTS_DIR / "final_model_params.json"
+TUNING_CSV = RESULTS_DIR / "tuning_trials.csv"
 
 # High-cardinality categorical features (hour × season = 96 levels)
 HOUR_SEASON_COL = "hour_season"

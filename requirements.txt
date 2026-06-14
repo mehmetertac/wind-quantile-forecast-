@@ -7,4 +7,5 @@ catboost>=1.2
 shap>=0.44
 matplotlib>=3.8
 category_encoders>=2.6
+optuna>=3.6
 requests>=2.31

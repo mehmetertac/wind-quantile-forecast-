@@ -19,6 +19,7 @@ from wind_quantile_forecast.features.target_encoding import (
     apply_categorical_encoding,
     target_encoding_column,
 )
+from wind_quantile_forecast.models.quantile_order import enforce_quantile_order
 
 Backend = Literal["lightgbm", "xgboost", "catboost"]
 
@@ -121,11 +122,17 @@ class QuantileGBM:
             return
         estimator.fit(X, y)
 
-    def predict(self, X: pd.DataFrame) -> dict[float, np.ndarray]:
+    def predict(
+        self,
+        X: pd.DataFrame,
+        *,
+        enforce_monotonic: bool = True,
+    ) -> dict[float, np.ndarray]:
         """Predict all quantiles for new observations.
 
         Args:
             X: Feature matrix with the same columns used at fit time.
+            enforce_monotonic: When True, apply row-wise sort so P10 <= P50 <= P90.
 
         Returns:
             Dict mapping quantile -> predicted array (e.g. ``{0.1: ..., 0.5: ..., 0.9: ...}``).
@@ -144,12 +151,17 @@ class QuantileGBM:
         if self._multi_model is not None:
             raw = np.asarray(self._multi_model.predict(X), dtype=float)
             if raw.ndim == 1:
-                return {self.quantiles[0]: raw}
-            return {q: raw[:, i] for i, q in enumerate(self.quantiles)}
+                preds = {self.quantiles[0]: raw}
+            else:
+                preds = {q: raw[:, i] for i, q in enumerate(self.quantiles)}
+        else:
+            preds = {
+                q: np.asarray(self._models[q].predict(X), dtype=float) for q in self.quantiles
+            }
 
-        return {
-            q: np.asarray(self._models[q].predict(X), dtype=float) for q in self.quantiles
-        }
+        if enforce_monotonic:
+            return enforce_quantile_order(preds, self.quantiles)
+        return preds
 
     def estimator_at(self, quantile: float) -> object:
         """Return the fitted backend estimator for one quantile (for SHAP).
@@ -295,6 +307,7 @@ def make_quantile_predict_fold(
     cat_col: str | None = None,
     cat_encoding: CatEncoding = "none",
     encoding_smoothing: float = DEFAULT_TARGET_ENCODING_SMOOTHING,
+    enforce_monotonic: bool = True,
 ) -> Callable[[pd.DataFrame, pd.DataFrame], dict[float, np.ndarray]]:
     """Build a ``predict_fold`` callback for :func:`evaluate_quantile_origin_cv`.
 
@@ -313,6 +326,7 @@ def make_quantile_predict_fold(
         cat_encoding: ``"target"`` encodes inside each fold; ``"native"`` keeps
             the raw column for CatBoost; ``"none"`` skips encoding.
         encoding_smoothing: Smoothing factor for fold-wise target encoding.
+        enforce_monotonic: When True, sort quantile predictions per row before return.
 
     Returns:
         ``(train_df, test_df) -> {quantile: np.ndarray}`` suitable for rolling-origin CV.
@@ -354,6 +368,6 @@ def make_quantile_predict_fold(
             cat_features=cat_features,
         )
         model.fit(tr[cols], tr[target_col])
-        return model.predict(te[cols])
+        return model.predict(te[cols], enforce_monotonic=enforce_monotonic)
 
     return predict_fold

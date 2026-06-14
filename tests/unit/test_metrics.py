@@ -11,6 +11,7 @@ from wind_quantile_forecast.config import QUANTILES
 from wind_quantile_forecast.evaluation.metrics import (
     METRICS_TABLE_COLUMNS,
     PI_COVERAGE_TARGET,
+    diagnose_interval_width,
     evaluate_quantile_forecast,
     log_fold_metrics,
     mae,
@@ -39,6 +40,16 @@ def test_pi_coverage_half_outside() -> None:
     lo = np.array([0.0, 0.0])
     hi = np.array([10.0, 10.0])
     assert pi_coverage(y, lo, hi) == pytest.approx(0.5)
+
+
+def test_diagnose_interval_width_narrow_interval() -> None:
+    y = np.array([5.0, 10.0, 15.0, 20.0])
+    lo = np.array([4.0, 9.0, 14.0, 19.0])
+    hi = np.array([6.0, 11.0, 16.0, 21.0])
+    diag = diagnose_interval_width(y, lo, hi, nominal=0.80)
+    assert diag["pi_coverage"] == pytest.approx(1.0)
+    assert diag["coverage_gap"] == pytest.approx(0.20)
+    assert diag["mean_interval_width"] == pytest.approx(2.0)
 
 
 def test_mae_rmse_mape_on_p50() -> None:

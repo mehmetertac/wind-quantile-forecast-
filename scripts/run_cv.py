@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import argparse
+import json
 import logging
+from pathlib import Path
 
 from wind_quantile_forecast.config import (
     DEFAULT_CV_FOLDS,
@@ -39,6 +41,17 @@ def main(argv: list[str] | None = None) -> int:
         default="target",
         help="Encoding for hour_season (default: target; native=CatBoost only)",
     )
+    parser.add_argument(
+        "--params-json",
+        type=str,
+        default=None,
+        help="Load model_params from final_model_params.json (or similar)",
+    )
+    parser.add_argument(
+        "--no-monotonic",
+        action="store_true",
+        help="Disable P10<=P50<=P90 post-processing",
+    )
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args(argv)
 
@@ -48,9 +61,16 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     model_df, feature_cols = build_modeling_table()
-    model_params: dict[str, int] = {"n_estimators": args.n_estimators}
+    model_params: dict[str, int | float] = {"n_estimators": args.n_estimators}
+    if args.params_json:
+        payload = json.loads(Path(args.params_json).read_text(encoding="utf-8"))
+        model_params = dict(payload.get("model_params", model_params))
+        if "backend" in payload:
+            args.backend = payload["backend"]
+        if "cat_encoding" in payload:
+            args.cat_encoding = payload["cat_encoding"]
     if args.backend == "lightgbm":
-        model_params["verbosity"] = -1
+        model_params.setdefault("verbosity", -1)
     cat_encoding: CatEncoding = args.cat_encoding
     if cat_encoding == "native" and args.backend != "catboost":
         parser.error("--cat-encoding native requires --backend catboost")
@@ -61,6 +81,7 @@ def main(argv: list[str] | None = None) -> int:
         multi_quantile=not args.per_quantile,
         cat_col=HOUR_SEASON_COL,
         cat_encoding=cat_encoding,
+        enforce_monotonic=not args.no_monotonic,
     )
     result = evaluate_quantile_origin_cv(
         model_df,
