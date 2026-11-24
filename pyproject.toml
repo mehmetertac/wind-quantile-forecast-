@@ -7,8 +7,21 @@ name = "wind-quantile-forecast"
 version = "0.1.0"
 description = "Day-ahead probabilistic wind power forecast with quantile GBMs"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.13"
 license = { text = "Apache-2.0" }
+dependencies = [
+    "numpy>=1.26",
+    "pandas>=2.1",
+    "scikit-learn>=1.4",
+    "lightgbm>=4.3",
+    "xgboost>=2.0",
+    "catboost>=1.2",
+    "shap>=0.44",
+    "matplotlib>=3.8",
+    "category_encoders>=2.6",
+    "optuna>=3.6",
+    "requests>=2.31",
+]
 
 [project.scripts]
 wind-forecast = "wind_quantile_forecast.cli:main"

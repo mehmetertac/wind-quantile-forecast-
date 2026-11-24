@@ -22,7 +22,9 @@ wheels/
 
 # Virtual environments
 .venv/
+.venv-smoke/
 venv/
+tmp_wheel_probe/
 ENV/
 
 # IDE

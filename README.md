@@ -138,6 +138,36 @@ flowchart LR
 
 ## Reproduce end-to-end
 
+**Python:** 3.11 or 3.12 only (`requires-python = ">=3.11,<3.13"`).
+
+### Locked runtime install (clean clone, wheels only)
+
+Use this for a reproducible environment without compiling from source:
+
+```powershell
+git clone https://github.com/mehmetertac/wind-quantile-forecast.git
+cd wind-quantile-forecast
+
+py -3.12 -m venv .venv
+.venv\Scripts\Activate.ps1
+
+python -m pip install --upgrade pip
+python -m pip install --only-binary=:all: --require-hashes -r requirements.lock
+python -m pip install --only-binary=:all: --no-deps -e .
+python scripts/smoke_test.py
+```
+
+CI runs the same smoke steps on `ubuntu-latest` and `windows-latest` for Python 3.11 and 3.12.
+
+Regenerate the lock after changing [requirements.in](requirements.in):
+
+```powershell
+py -3.11 -m pip install pip-tools
+py -3.11 -m piptools compile --generate-hashes --allow-unsafe --pip-args="--only-binary=:all:" -o requirements.lock requirements.in
+```
+
+### Full pipeline (dev + optional weather sibling)
+
 ```powershell
 git clone https://github.com/mehmetertac/wind-quantile-forecast.git
 cd wind-quantile-forecast
@@ -145,9 +175,11 @@ cd wind-quantile-forecast
 py -m venv .venv
 .venv\Scripts\Activate.ps1
 
+python -m pip install --upgrade pip
+python -m pip install --only-binary=:all: --require-hashes -r requirements.lock
+python -m pip install --only-binary=:all: --no-deps -e .
 pip install -r requirements-dev.txt
-pip install -r requirements-weather.txt   # editable ../energy-feature-pipeline
-pip install -e .
+pip install -r requirements-weather.txt   # optional: editable ../energy-feature-pipeline (not in lock/CI)
 pre-commit install
 
 # 1. Build day-ahead table (OPSD + ERA5/NWP features, lead=24h)

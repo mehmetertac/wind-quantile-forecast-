@@ -1,0 +1,13 @@
+numpy>=1.26
+pandas>=2.1
+scikit-learn>=1.4
+lightgbm>=4.3
+xgboost>=2.0
+catboost>=1.2
+shap>=0.44
+matplotlib>=3.8
+# Pin contourpy for manylinux wheels (1.3.3 is win-only at time of lock).
+contourpy>=1.3.0,<=1.3.2
+category_encoders>=2.6
+optuna>=3.6
+requests>=2.31
