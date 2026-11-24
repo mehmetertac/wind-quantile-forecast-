@@ -166,6 +166,8 @@ py -3.11 -m pip install pip-tools
 py -3.11 -m piptools compile --generate-hashes --allow-unsafe --pip-args="--only-binary=:all:" -o requirements.lock requirements.in
 ```
 
+On Windows, re-apply the `nvidia-nccl-cu12` stanza in [requirements.lock](requirements.lock) if pip-compile omits the Linux-only pin (required for Ubuntu `--require-hashes` installs with xgboost).
+
 ### Full pipeline (dev + optional weather sibling)
 
 ```powershell

@@ -893,6 +893,12 @@ numpy==2.4.6 \
     #   scipy
     #   shap
     #   xgboost
+nvidia-nccl-cu12==2.32.6 ; sys_platform == "linux" \
+    --hash=sha256:2a6e6d5ddfc08970eca872be3dfa2650b24fa10a2043974465a9cae9c64ed6d8 \
+    --hash=sha256:7a458829e9d3168d7be2247f819991ffc12e65f1a05ba269f4f635b9451076bb
+    # via
+    #   -r requirements.in
+    #   xgboost
 optuna==5.1.0 \
     --hash=sha256:aba6a73d32e4ccf58c00ea70a60bf5bcece6b34defb024474dddd0962dc070b1
     # via -r requirements.in
